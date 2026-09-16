@@ -1,0 +1,32 @@
+[project]
+name = "sentinela-coins"
+version = "0.1.0"
+description = "Pipeline de streaming de trades cripto (Binance -> Kafka -> lakehouse medallion -> Streamlit)"
+requires-python = ">=3.11"
+dependencies = [
+    "confluent-kafka>=2.5",
+    "duckdb>=1.0",
+    "polars>=1.0",
+    "python-dotenv>=1.0",
+    "streamlit>=1.36",
+    "streamlit-autorefresh>=1.0",
+    "websockets>=12",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.6.2",
+    "pytest>=9.1.1",
+    "ruff>=0.16.7",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "src/transform"]

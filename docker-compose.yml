@@ -1,0 +1,82 @@
+name: crypto-lakehouse
+
+# Config comum aos 3 brokers (KRaft, sem Zookeeper).
+x-kafka-common: &kafka-common
+  image: confluentinc/cp-kafka:7.7.1
+  environment: &kafka-env
+    KAFKA_PROCESS_ROLES: broker,controller
+    KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka1:29093,2@kafka2:29093,3@kafka3:29093
+    KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+    KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+    KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+    # replicação de verdade: 3 réplicas, mínimo 2 em sincronia
+    KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+    KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+    KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+    KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+    KAFKA_MIN_INSYNC_REPLICAS: 2
+    KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+
+services:
+  kafka1:
+    <<: *kafka-common
+    hostname: kafka1
+    container_name: kafka1
+    ports:
+      - "9092:9092"   # host -> localhost:9092
+    environment:
+      <<: *kafka-env
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENERS: INTERNAL://kafka1:29092,CONTROLLER://kafka1:29093,EXTERNAL://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka1:29092,EXTERNAL://localhost:9092
+
+  kafka2:
+    <<: *kafka-common
+    hostname: kafka2
+    container_name: kafka2
+    ports:
+      - "9094:9094"
+    environment:
+      <<: *kafka-env
+      KAFKA_NODE_ID: 2
+      KAFKA_LISTENERS: INTERNAL://kafka2:29092,CONTROLLER://kafka2:29093,EXTERNAL://0.0.0.0:9094
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka2:29092,EXTERNAL://localhost:9094
+
+  kafka3:
+    <<: *kafka-common
+    hostname: kafka3
+    container_name: kafka3
+    ports:
+      - "9096:9096"
+    environment:
+      <<: *kafka-env
+      KAFKA_NODE_ID: 3
+      KAFKA_LISTENERS: INTERNAL://kafka3:29092,CONTROLLER://kafka3:29093,EXTERNAL://0.0.0.0:9096
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka3:29092,EXTERNAL://localhost:9096
+
+  # Cria o tópico com 6 partições e replicação 3, depois sai.
+  kafka-init:
+    image: confluentinc/cp-kafka:7.7.1
+    depends_on: [kafka1, kafka2, kafka3]
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "
+      echo 'aguardando brokers...';
+      until kafka-topics --bootstrap-server kafka1:29092 --list >/dev/null 2>&1; do sleep 2; done;
+      kafka-topics --bootstrap-server kafka1:29092 --create --if-not-exists
+        --topic crypto.trades --partitions 6 --replication-factor 3;
+      echo '--- tópico criado ---';
+      kafka-topics --bootstrap-server kafka1:29092 --describe --topic crypto.trades;
+      "
+
+  # Opcional: UI web pra ver tópicos/partições/mensagens -> http://localhost:8080
+  kafka-ui:
+    image: kafbat/kafka-ui:v1.5.0
+    depends_on: [kafka1, kafka2, kafka3]
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka1:29092,kafka2:29092,kafka3:29092
+      DYNAMIC_CONFIG_ENABLED: "true"
