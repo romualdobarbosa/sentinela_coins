@@ -17,12 +17,16 @@ def build() -> None:
     con.execute(
         f"""
         COPY (
+            -- lê price/qty/trade_time já tipados pelo consumer_batch (Polars), em vez de
+            -- recalcular de p/q/T crus: o parquet do bronze tem colunas "t" (trade id) e
+            -- "T" (trade time) que só diferem em maiúscula, e o DuckDB resolve nomes de
+            -- coluna sem diferenciar caixa -- SELECT T colidiria silenciosamente com "t".
             WITH trades AS (
                 SELECT
-                    s                          AS symbol,
-                    CAST(p AS DOUBLE)          AS price,
-                    CAST(q AS DOUBLE)          AS qty,
-                    to_timestamp(T / 1000.0)   AS trade_time
+                    s AS symbol,
+                    price,
+                    qty,
+                    trade_time
                 FROM read_parquet('{BRONZE_PATH}/**/*.parquet')
             ),
             real_candles AS (

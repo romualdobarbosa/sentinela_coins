@@ -2,7 +2,7 @@ name: crypto-lakehouse
 
 # Config comum aos 3 brokers (KRaft, sem Zookeeper).
 x-kafka-common: &kafka-common
-  image: confluentinc/cp-kafka:7.7.1
+  image: docker.io/confluentinc/cp-kafka:7.7.1
   environment: &kafka-env
     KAFKA_PROCESS_ROLES: broker,controller
     KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka1:29093,2@kafka2:29093,3@kafka3:29093
@@ -57,22 +57,21 @@ services:
 
   # Cria o tópico com 6 partições e replicação 3, depois sai.
   kafka-init:
-    image: confluentinc/cp-kafka:7.7.1
+    image: docker.io/confluentinc/cp-kafka:7.7.1
     depends_on: [kafka1, kafka2, kafka3]
     entrypoint: ["/bin/sh", "-c"]
     command: >
       "
       echo 'aguardando brokers...';
       until kafka-topics --bootstrap-server kafka1:29092 --list >/dev/null 2>&1; do sleep 2; done;
-      kafka-topics --bootstrap-server kafka1:29092 --create --if-not-exists
-        --topic crypto.trades --partitions 6 --replication-factor 3;
+      kafka-topics --bootstrap-server kafka1:29092 --create --if-not-exists --topic crypto.trades --partitions 6 --replication-factor 3;
       echo '--- tópico criado ---';
       kafka-topics --bootstrap-server kafka1:29092 --describe --topic crypto.trades;
       "
 
   # Opcional: UI web pra ver tópicos/partições/mensagens -> http://localhost:8080
   kafka-ui:
-    image: kafbat/kafka-ui:v1.5.0
+    image: docker.io/kafbat/kafka-ui:v1.5.0
     depends_on: [kafka1, kafka2, kafka3]
     ports:
       - "8080:8080"

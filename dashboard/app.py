@@ -30,7 +30,7 @@ with tab_hist:
     if gold_file.exists():
         df = pl.read_parquet(gold_file)
         st.subheader("Métricas diárias por símbolo")
-        st.dataframe(df.to_pandas(), use_container_width=True)
+        st.dataframe(df.to_pandas(), width="stretch")
 
         latest = df.sort("dt").group_by("symbol").last().sort("symbol")
         st.subheader("Variação % — último dia disponível")
