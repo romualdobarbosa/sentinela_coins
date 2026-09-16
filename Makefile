@@ -1,6 +1,6 @@
 export PYTHONPATH := src
 
-.PHONY: up down logs producer batch silver gold pipeline dashboard reset
+.PHONY: up down logs producer batch silver gold pipeline dashboard reset run-bg stop-bg status-bg
 
 up:            ## sobe os 3 brokers + cria tópico + kafka-ui
 	podman compose up -d
@@ -31,3 +31,21 @@ pipeline: silver gold   ## roda silver + gold em sequência
 
 dashboard:     ## streamlit (aba análise + aba ao vivo)
 	uv run streamlit run dashboard/app.py
+
+run-bg:        ## sobe producer + batch em background (nohup), sobrevive fechar o terminal
+	mkdir -p logs
+	nohup uv run python -u src/producer.py > logs/producer.log 2>&1 & echo $$! > .producer.pid
+	nohup uv run python -u src/consumer_batch.py > logs/batch.log 2>&1 & echo $$! > .batch.pid
+	@sleep 1
+	@echo "rodando em background -- logs em logs/producer.log e logs/batch.log"
+	@$(MAKE) status-bg
+
+stop-bg:       ## para o producer + batch que estão rodando em background
+	-pkill -f "src/producer.py"
+	-pkill -f "src/consumer_batch.py"
+	-rm -f .producer.pid .batch.pid
+	@echo "producer/batch parados (offsets já commitados ficam salvos, sem perda de dado)"
+
+status-bg:     ## mostra se producer/batch em background estão rodando + tamanho do bronze
+	@pgrep -af "src/producer.py|src/consumer_batch.py" || echo "nada rodando em background"
+	@find data/bronze -name '*.parquet' 2>/dev/null | wc -l | xargs echo "arquivos no bronze:"
