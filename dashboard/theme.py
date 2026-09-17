@@ -3,11 +3,23 @@
 import plotly.graph_objects as go
 import streamlit as st
 
-CARD_BG = "#161a25"
-BORDER = "#262d3d"
+CARD_BG = "#161513"
+BORDER = "#3A342B"
 UP = "#26a69a"
 DOWN = "#ef5350"
-TEXT = "#e6e9ef"
+TEXT = "#E4DBCA"
+
+SYMBOL_NAMES = {
+    "BTCUSDT": "Bitcoin",
+    "ETHUSDT": "Ethereum",
+    "SOLUSDT": "Solana",
+    "BNBUSDT": "BNB",
+    "XRPUSDT": "XRP",
+}
+
+
+def display_name(symbol: str) -> str:
+    return SYMBOL_NAMES.get(symbol, symbol)
 
 
 def format_price(value: float) -> str:
@@ -17,6 +29,14 @@ def format_price(value: float) -> str:
     if abs(value) >= 1:
         return f"{value:,.4f}"
     return f"{value:,.6f}"
+
+
+def format_compact(value: float) -> str:
+    """Abrevia volumes grandes (K/M/B) — evita estourar a largura do card."""
+    for suffix, threshold in (("B", 1e9), ("M", 1e6), ("K", 1e3)):
+        if abs(value) >= threshold:
+            return f"{value / threshold:,.2f}{suffix}"
+    return f"{value:,.2f}"
 
 
 def inject_css() -> None:
@@ -31,6 +51,9 @@ def inject_css() -> None:
         }}
         div[data-testid="stMetricValue"] {{
             font-size: 1.5rem;
+        }}
+        h1 {{
+            text-align: center;
         }}
         </style>
         """,
