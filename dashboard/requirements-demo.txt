@@ -1,0 +1,9 @@
+# Dependências mínimas pro deploy do dashboard em DASHBOARD_MODE=demo
+# (Streamlit Community Cloud > Advanced settings > Python dependencies file).
+# Não inclui confluent-kafka/websockets/duckdb: o modo demo não usa Kafka nem
+# roda o pipeline, só lê os parquet committed em demo_data/.
+streamlit>=1.36
+streamlit-autorefresh>=1.0
+polars>=1.0
+plotly>=7.1.0
+python-dotenv>=1.0

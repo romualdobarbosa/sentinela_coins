@@ -4,8 +4,13 @@
 - Aba "Análise": lê GOLD + SILVER (batch). Candlestick real, timeframe ajustável.
 
 Rode com: make dashboard   (ou: PYTHONPATH=src streamlit run dashboard/app.py)
+
+DASHBOARD_MODE=demo troca o Kafka live por replay em loop de um snapshot real de
+trades e o GOLD/SILVER pelo snapshot committed em demo_data/ -- pra publicar um
+link clicável (ex: Streamlit Community Cloud) sem precisar de Kafka/pipeline no ar.
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -14,17 +19,26 @@ sys.path.append(str(Path(__file__).resolve().parent.parent / "src"))
 sys.path.append(str(Path(__file__).resolve().parent))
 
 import components  # noqa: E402
+import live  # noqa: E402
 import polars as pl  # noqa: E402
 import streamlit as st  # noqa: E402
-from live import make_live_consumer, poll_trades  # noqa: E402
 from streamlit_autorefresh import st_autorefresh  # noqa: E402
 from theme import SYMBOL_NAMES, display_name, format_price, inject_css  # noqa: E402
 
 import data  # noqa: E402
 
-st.set_page_config(page_title="Sentinela Coins", layout="wide")
+IS_DEMO = os.getenv("DASHBOARD_MODE", "local") == "demo"
+TITLE = "Sentinela Coins (Demo)" if IS_DEMO else "Sentinela Coins"
+
+st.set_page_config(page_title=TITLE, layout="wide")
 inject_css()
-st.title("Sentinela Coins")
+st.title(TITLE)
+if IS_DEMO:
+    st.caption(
+        "Modo demonstração: replay em loop de trades reais coletados em 17/09/2026 "
+        "e snapshot fixo de gold/silver -- sem Kafka/pipeline no ar. Clona o repo e "
+        "roda `make dashboard` pra ver a versão ao vivo de verdade."
+    )
 
 tab_overview, tab_analysis = st.tabs(["Visão Geral", "Análise"])
 
@@ -46,15 +60,24 @@ with tab_overview:
             )
 
     st.divider()
-    st.subheader("Ao vivo")
+    st.subheader("Ao vivo" + (" (replay)" if IS_DEMO else ""))
 
     st_autorefresh(interval=2000, key="live_refresh")
 
-    if "live_consumer" not in st.session_state:
-        st.session_state.live_consumer = make_live_consumer()
-        st.session_state.live_buffer = []
+    if IS_DEMO:
+        if "demo_trades" not in st.session_state:
+            st.session_state.demo_trades = live.load_demo_trades()
+            st.session_state.demo_cursor = 0
+            st.session_state.live_buffer = []
+        trades, st.session_state.demo_cursor = live.poll_trades_replay(
+            st.session_state.demo_trades, st.session_state.demo_cursor
+        )
+    else:
+        if "live_consumer" not in st.session_state:
+            st.session_state.live_consumer = live.make_live_consumer()
+            st.session_state.live_buffer = []
+        trades = live.poll_trades(st.session_state.live_consumer)
 
-    trades = poll_trades(st.session_state.live_consumer)
     if trades:
         rows = [
             {"symbol": t["s"], "price": float(t["p"]), "qty": float(t["q"]), "T": t["T"]}
