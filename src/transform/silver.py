@@ -1,19 +1,28 @@
 """SILVER: lê o bronze cru e monta candles OHLCV de 1 minuto por símbolo.
 
 DuckDB lê os parquet do bronze direto (glob recursivo). Tipagem + agregação aqui.
-Na fase AWS, é só trocar BRONZE_PATH por s3://... (DuckDB lê S3 nativo com httpfs).
+Na fase AWS, troca BRONZE_PATH por s3://... no .env -- build() detecta o prefixo e
+carrega httpfs + credenciais automaticamente, resto da query não muda.
 """
 
 from pathlib import Path
 
 import duckdb
 
-from config import BRONZE_PATH, SILVER_PATH
+from config import AWS_ACCESS_KEY_ID, AWS_REGION, AWS_SECRET_ACCESS_KEY, BRONZE_PATH, SILVER_PATH
 
 
 def build() -> None:
     Path(SILVER_PATH).mkdir(parents=True, exist_ok=True)
     con = duckdb.connect()
+
+    if BRONZE_PATH.startswith("s3://"):
+        con.execute("INSTALL httpfs; LOAD httpfs;")
+        con.execute(
+            "CREATE OR REPLACE SECRET aws_s3 (TYPE S3, KEY_ID ?, SECRET ?, REGION ?)",
+            [AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION],
+        )
+
     con.execute(
         f"""
         COPY (

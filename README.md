@@ -57,16 +57,21 @@ Parar tudo: `make down`. Se o Kafka bugar no boot: `make reset` (apaga o estado 
 
 ## Fase AWS (provar uso da cloud)
 
-Depois de tudo redondo local, aponta o bronze pro S3:
+Código e dependências (`s3fs`/`boto3`) já estão prontos. Falta só a conta:
 
-1. Cria um bucket S3 e credenciais (perfil/keys).
-2. No `.env`: `BRONZE_PATH=s3://seu-bucket/bronze`.
-3. `uv add s3fs boto3` (Polars grava em `s3://` via s3fs).
-4. Roda o `make batch` por um período -> os parquet caem no S3.
-5. Silver lê de lá com DuckDB: `INSTALL httpfs; LOAD httpfs;` e `read_parquet('s3://...')`.
+1. Cria um bucket S3 e um IAM user com permissão restrita a esse bucket (não usa a
+   conta root nem `AdministratorAccess`); gera o access key/secret desse user.
+2. Cola as chaves no `.env` (seção "Fase AWS", comentada por padrão) e troca
+   `BRONZE_PATH=s3://seu-bucket/bronze`.
+3. Roda `make batch` por um período -> `consumer_batch.py` detecta o prefixo `s3://`
+   e grava os parquet lá via `s3fs`, em vez do disco local.
+4. `make pipeline` -> `silver.py` detecta o mesmo prefixo, carrega `httpfs` e a
+   credencial via DuckDB Secrets Manager, e lê o bronze direto do S3.
 
-Print do bucket + kafka-ui com as partições = evidência pro portfólio. Não precisa
-deixar no ar; é vitrine, não produção.
+Silver e gold continuam locais (só o bronze prova a integração com a cloud). Print
+do bucket + kafka-ui com as partições = evidência pro portfólio. Não precisa deixar
+no ar; é vitrine, não produção. Pra voltar ao 100% local: comenta as chaves de novo
+e troca `BRONZE_PATH` de volta pra `./data/bronze`.
 
 ## Desenvolvimento
 
