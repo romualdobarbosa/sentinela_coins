@@ -4,6 +4,11 @@ Pipeline de dados em streaming sobre trades de cripto (Binance), com Kafka (3 br
 replicação real) e arquitetura medallion. Dois consumers no mesmo tópico: um batch
 (alimenta o lakehouse) e um live (speed layer do dashboard). Arquitetura Lambda.
 
+**Demo:** [sentinelacoins.streamlit.app](https://sentinelacoins.streamlit.app/) — link
+público, sem Kafka no ar: a aba "Ao vivo" faz replay em loop de um snapshot de trades
+reais coletados durante a ingestão, só pra dar uma ideia visual do painel. Pra ver o
+pipeline rodando de verdade (Kafka + streaming real), clona o repo e roda local.
+
 ## Arquitetura
 
 ```
