@@ -32,4 +32,4 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src", "src/transform"]
+pythonpath = ["src", "src/transform", "dashboard"]
