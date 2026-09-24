@@ -99,41 +99,42 @@ Fase AWS: S3 (bronze) + boto3/s3fs; DuckDB lê `s3://` via httpfs.
 
 ## 6. Estado atual do código
 
-Já existe um **esqueleto funcional** (gerado, sintaxe validada, **mas não rodado de ponta a ponta**):
+**Projeto concluído e publicado** (github.com/romualdobarbosa/sentinela_coins). Rodou de ponta a ponta:
+7 dias de ingestão real (16/09 a 23/09/2026), ~66M trades, 5 pares, bronze ~540 MB, silver com
+55.115 candles, gold com 40 linhas. Fase AWS executada e **encerrada** (bucket S3 e access key
+apagados; nada no ar). Demo público no Streamlit Cloud (`DASHBOARD_MODE=demo`, snapshot em
+`dashboard/demo_data/`). Detalhes e prints no README.
 
 ```
-├── docker-compose.yml        # 3 brokers KRaft + init do tópico + kafka-ui (:8080)
-├── Makefile                  # up/down/producer/batch/silver/gold/pipeline/dashboard
-├── requirements.txt
+├── docker-compose.yml        # 3 brokers KRaft + init do tópico + kafka-ui (:8080); roda via Podman
+├── Makefile                  # up/down/producer/batch/silver/gold/pipeline/dashboard/backfill-s3/run-bg...
+├── pyproject.toml + uv.lock  # uv (substitui requirements.txt); config de ruff e pytest
 ├── .env.example
-├── README.md
-├── src/
-│   ├── config.py             # tudo parametrizável por .env
-│   ├── producer.py           # Binance WS -> Kafka (com reconexão)
-│   ├── consumer_batch.py     # Kafka -> bronze (commit manual pós-gravação)
-│   └── transform/
-│       ├── silver.py         # bronze -> candles 1m
-│       └── gold.py           # silver -> métricas diárias
-└── dashboard/
-    ├── app.py                # Streamlit: aba Análise (gold) + aba Ao vivo
-    └── live.py               # consumer live (group próprio)
+├── .github/workflows/ci.yml  # ruff + pytest em push/PR
+├── src/                      # config, producer, consumer_batch (group bronze-writer), transform/{silver,gold}
+├── scripts/backfill_s3.py    # sobe o bronze local pro S3 (idempotente)
+├── dashboard/                # app, components (gráficos), data, theme, live, demo_data/
+├── tests/                    # lógica pura (sem Kafka): producer, batch, silver, gold, gráfico
+└── docs/img/                 # prints do kafka-ui e do S3 usados no README
 ```
 
-**Pontos que podem precisar de ajuste no primeiro run** (o agente deve verificar):
-- Boot do Kafka: controller leva ~20-30s a eleger antes do tópico ser criado (`kafka-init` espera).
-  Se bugar, `make reset` (down -v) e sobe limpo.
-- API de `group_by` do Polars pode variar conforme versão — checar iteração em `consumer_batch.flush`.
-- Geoblock da Binance (ver decisão 1).
-- Imagens/tags do compose (cp-kafka 7.7.1, kafbat/kafka-ui) — validar que puxam.
+Decisões/achados que valem lembrar:
+- Ambiente é **Podman** (não Docker) e **uv**; `make` já usa `podman compose` e `uv run`.
+- Silver faz forward-fill de minutos sem trade; o dashboard descarta esses candles e colapsa
+  gaps longos no eixo (`_drop_ingestion_gaps` em `dashboard/components.py`).
+- Silver lendo do S3 leva ~9 min contra ~2 s local (milhares de parquets pequenos).
+- `.env` (gitignored) tem overrides pra ingestão longa: `BATCH_MAX_SECONDS=900`, `BATCH_MAX_MESSAGES=50000`.
+- Sessões paralelas usam o mesmo working dir (branches, não worktrees): antes de mexer,
+  `git status --short`/`git branch -vv`, e commitar só o que foi tocado.
 
-## 7. Ordem de construção sugerida
+## 7. Como rodar de novo (histórico da ordem de construção)
 
-1. `make up` → confirmar 3 brokers de pé + tópico criado (ver no kafka-ui).
-2. `make producer` + `make batch` → confirmar parquet caindo no bronze.
-3. `make pipeline` (silver + gold) → confirmar candles e métricas.
-4. `make dashboard` → validar aba Análise e aba Ao vivo.
-5. Só depois de tudo redondo local: **fase AWS** — trocar `BRONZE_PATH` por `s3://...`,
-   rodar o batch por um período, guardar evidência, desligar.
+1. `make up` → 3 brokers + tópico (conferir no kafka-ui).
+2. `make producer` + `make batch` (ou `make run-bg`) → parquet caindo no bronze.
+3. `make pipeline` → silver + gold.
+4. `make dashboard` → aba Análise e aba Ao vivo.
+5. Fase AWS (opcional, já feita uma vez): bucket + IAM restrito, chaves no `.env`,
+   `make backfill-s3`, `BRONZE_PATH=s3://...`, guardar evidência, **desligar tudo**.
 
 ## 8. Como quero trabalhar com você (agente)
 
