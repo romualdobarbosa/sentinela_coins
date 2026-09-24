@@ -1,6 +1,6 @@
 export PYTHONPATH := src
 
-.PHONY: up down logs producer batch silver gold pipeline dashboard reset run-bg stop-bg status-bg
+.PHONY: backfill-s3 up down logs producer batch silver gold pipeline dashboard reset run-bg stop-bg status-bg
 
 up:            ## sobe os 3 brokers + cria tópico + kafka-ui
 	podman compose up -d
@@ -45,6 +45,9 @@ stop-bg:       ## para o producer + batch que estão rodando em background
 	-pkill -f "src/consumer_batch.py"
 	-rm -f .producer.pid .batch.pid
 	@echo "producer/batch parados (offsets já commitados ficam salvos, sem perda de dado)"
+
+backfill-s3:   ## sobe o bronze local pro S3 (idempotente, fase AWS)
+	uv run python scripts/backfill_s3.py
 
 status-bg:     ## mostra se producer/batch em background estão rodando + tamanho do bronze
 	@pgrep -af "src/producer.py|src/consumer_batch.py" || echo "nada rodando em background"

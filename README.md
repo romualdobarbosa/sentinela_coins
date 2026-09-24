@@ -60,23 +60,51 @@ dado suficiente pra formar candles.
 
 Parar tudo: `make down`. Se o Kafka bugar no boot: `make reset` (apaga o estado e sobe limpo).
 
+## Resultados (ingestão real, 16/09 a 23/09/2026)
+
+Sete dias de ingestão contínua da Binance, 5 pares (BTC, ETH, SOL, BNB, XRP):
+
+| | |
+|---|---|
+| Trades ingeridos | ~66 milhões (~99 trades/s combinados) |
+| Tópico `crypto.trades` | 6 partições, RF=3, 3 brokers em sync (168/168 réplicas), ~7 GB no cluster |
+| Bronze | ~7 mil parquets, ~540 MB, particionado `symbol=/dt=` |
+| Silver | 55.115 candles de 1 min (11.023 por par) |
+| Gold | 40 linhas (5 pares x 8 dias) |
+| Consumer `bronze-writer` | lag 0 ao final |
+
+Kafka-ui ao final da ingestão:
+
+![Brokers](docs/img/kafka-brokers.png)
+![Tópico](docs/img/kafka-topic.png)
+![Consumer group](docs/img/kafka-consumer.png)
+
+Nota sobre gaps: a ingestão ficou parada ~10h entre o teste inicial e a rodada contínua.
+O silver preenche esses minutos com candles flat (forward-fill) e o dashboard os descarta
+do gráfico, colapsando o trecho no eixo do tempo.
+
 ## Fase AWS (provar uso da cloud)
 
-Código e dependências (`s3fs`/`boto3`) já estão prontos. Falta só a conta:
+Executada em 23/09/2026, com custo ~zero (bronze de ~540 MB no S3 por poucas horas).
 
-1. Cria um bucket S3 e um IAM user com permissão restrita a esse bucket (não usa a
-   conta root nem `AdministratorAccess`); gera o access key/secret desse user.
-2. Cola as chaves no `.env` (seção "Fase AWS", comentada por padrão) e troca
-   `BRONZE_PATH=s3://seu-bucket/bronze`.
-3. Roda `make batch` por um período -> `consumer_batch.py` detecta o prefixo `s3://`
-   e grava os parquet lá via `s3fs`, em vez do disco local.
-4. `make pipeline` -> `silver.py` detecta o mesmo prefixo, carrega `httpfs` e a
-   credencial via DuckDB Secrets Manager, e lê o bronze direto do S3.
+1. Bucket S3 (block public access ligado) + IAM user com permissão restrita a esse bucket
+   (não usa a conta root nem `AdministratorAccess`); access key/secret só no `.env`
+   (gitignored), com `S3_BUCKET` e `AWS_REGION`.
+2. `make backfill-s3` (`scripts/backfill_s3.py`): sobe o bronze local pro S3 preservando o
+   layout `symbol=/dt=`. Idempotente e confere contagem/bytes no fim (6.946 arquivos, 539,9 MB).
+3. `BRONZE_PATH=s3://<bucket>/bronze make batch`: `consumer_batch.py` detecta o prefixo
+   `s3://` e grava os parquet direto no S3 via `s3fs`, em vez do disco local.
+4. `BRONZE_PATH=s3://<bucket>/bronze make silver`: `silver.py` carrega `httpfs` + credencial
+   via DuckDB Secrets Manager e lê o bronze direto do S3. O resultado é idêntico ao do bronze
+   local (mesmas 55.115 linhas; OHLC e `trades` iguais, só ruído de ponto flutuante na soma
+   do volume). Custo: ~9 min lendo do S3 contra ~2 s local, esperado pra ~7 mil arquivos pequenos.
 
-Silver e gold continuam locais (só o bronze prova a integração com a cloud). Print
-do bucket + kafka-ui com as partições = evidência pro portfólio. Não precisa deixar
-no ar; é vitrine, não produção. Pra voltar ao 100% local: comenta as chaves de novo
-e troca `BRONZE_PATH` de volta pra `./data/bronze`.
+![Bronze no S3](docs/img/s3-bronze.png)
+![Parquets no S3](docs/img/s3-parquets.png)
+
+Silver e gold continuam locais (só o bronze prova a integração com a cloud). É vitrine,
+não produção: nada fica no ar. Pra voltar ao 100% local: comenta as chaves e mantém
+`BRONZE_PATH=./data/bronze`.
 
 ## Desenvolvimento
 
