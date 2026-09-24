@@ -100,7 +100,16 @@ Executada em 23/09/2026, com custo ~zero (bronze de ~540 MB no S3 por poucas hor
    do volume). Custo: ~9 min lendo do S3 contra ~2 s local, esperado pra ~7 mil arquivos pequenos.
 
 ![Bronze no S3](docs/img/s3-bronze.png)
-![Parquets no S3](docs/img/s3-parquets.png)
+
+Backfill (arquivos de 16/09, todos enviados no mesmo instante pelo script):
+
+![Parquets do backfill](docs/img/s3-parquets.png)
+
+Streaming ao vivo: flushes do `consumer_batch` em 23/09, ordenados do mais novo. Os de
+20:49 são o consumer zerando o backlog do Kafka; depois cai pro ritmo normal (flush por
+tempo, 120 s no teste):
+
+![Flushes do batch no S3](docs/img/s3-live-batch.png)
 
 Silver e gold continuam locais (só o bronze prova a integração com a cloud). É vitrine,
 não produção: nada fica no ar. Pra voltar ao 100% local: comenta as chaves e mantém
