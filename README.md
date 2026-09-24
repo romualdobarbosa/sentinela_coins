@@ -112,7 +112,9 @@ tempo, 120 s no teste):
 ![Flushes do batch no S3](docs/img/s3-live-batch.png)
 
 Silver e gold continuam locais (só o bronze prova a integração com a cloud). É vitrine,
-não produção: nada fica no ar. Pra voltar ao 100% local: comenta as chaves e mantém
+não produção: depois de tirar as evidências acima, o bucket foi apagado e a access key
+do IAM user foi removida, então nada fica no ar nem gera custo. Pra repetir: crie um bucket
+e uma key nova e rode os passos acima. Pra voltar ao 100% local: comenta as chaves e mantém
 `BRONZE_PATH=./data/bronze`.
 
 ## Desenvolvimento
