@@ -4,12 +4,12 @@ import consumer_batch
 
 
 def test_flush_partitions_by_symbol_and_date(tmp_path, monkeypatch):
-    monkeypatch.setattr(consumer_batch, "BRONZE_PATH", str(tmp_path))
+    monkeypatch.setattr(consumer_batch, "RAW_PATH", str(tmp_path))
 
     buffer = [
-        {"s": "BTCUSDT", "p": "65000.0", "q": "0.01", "T": 1700000000000},
-        {"s": "BTCUSDT", "p": "65010.0", "q": "0.02", "T": 1700000005000},
-        {"s": "ETHUSDT", "p": "3400.0", "q": "0.5", "T": 1700000000000},
+        {"s": "BTCUSDT", "t": 1, "p": "65000.0", "q": "0.01", "T": 1700000000000},
+        {"s": "BTCUSDT", "t": 2, "p": "65010.0", "q": "0.02", "T": 1700000005000},
+        {"s": "ETHUSDT", "t": 1, "p": "3400.0", "q": "0.5", "T": 1700000000000},
     ]
 
     consumer_batch.flush(buffer)
@@ -29,7 +29,7 @@ def test_flush_partitions_by_symbol_and_date(tmp_path, monkeypatch):
 
 
 def test_flush_noop_on_empty_buffer(tmp_path, monkeypatch):
-    monkeypatch.setattr(consumer_batch, "BRONZE_PATH", str(tmp_path))
+    monkeypatch.setattr(consumer_batch, "RAW_PATH", str(tmp_path))
 
     consumer_batch.flush([])
 

@@ -4,18 +4,26 @@ import polars as pl
 import silver
 
 import consumer_batch
+import promote_bronze
 
 
 def _write_bronze_trades(
     bronze_dir, symbol: str, prices_and_times: list[tuple[float, int]], monkeypatch
 ) -> None:
-    # gera o bronze passando pelo consumer_batch.flush() de verdade (em vez de escrever
-    # o parquet à mão), pra garantir o mesmo schema de colunas (raw + price/qty/trade_time
-    # tipados) que o pipeline real produz -- é essa costura entre bronze e silver que
-    # escondia a colisão de nomes "t"/"T" que o DuckDB resolve sem diferenciar caixa.
-    monkeypatch.setattr(consumer_batch, "BRONZE_PATH", str(bronze_dir))
-    buffer = [{"s": symbol, "p": str(price), "q": "1.0", "T": t} for price, t in prices_and_times]
+    # gera o bronze passando pelo fluxo real raw -> promote (em vez de escrever o parquet
+    # à mão), pra garantir o mesmo schema de colunas (raw + price/qty/trade_time tipados)
+    # que o pipeline real produz -- é essa costura entre bronze e silver que escondia a
+    # colisão de nomes "t"/"T" que o DuckDB resolve sem diferenciar caixa.
+    raw_dir = bronze_dir.parent / "raw"
+    monkeypatch.setattr(consumer_batch, "RAW_PATH", str(raw_dir))
+    monkeypatch.setattr(promote_bronze, "RAW_PATH", str(raw_dir))
+    monkeypatch.setattr(promote_bronze, "BRONZE_PATH", str(bronze_dir))
+    buffer = [
+        {"s": symbol, "t": i, "p": str(price), "q": "1.0", "T": t}
+        for i, (price, t) in enumerate(prices_and_times)
+    ]
     consumer_batch.flush(buffer)
+    promote_bronze.promote()
 
 
 def test_forward_fill_produces_flat_candles_for_minutes_without_trades(tmp_path, monkeypatch):

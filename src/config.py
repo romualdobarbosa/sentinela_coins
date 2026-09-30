@@ -18,6 +18,10 @@ BINANCE_WS_BASE = os.getenv("BINANCE_WS_BASE", "wss://data-stream.binance.vision
 
 # Camadas medallion. Troca BRONZE_PATH por s3://seu-bucket/bronze na fase AWS
 # (silver/gold continuam locais -- só o bronze prova a integração com a cloud).
+# RAW é landing zone local antes do bronze: consumer_batch grava aqui (pode duplicar
+# em caso de crash entre flush e commit); promote_bronze.py deduplica por (s, t) na
+# promoção pro bronze, então bronze/silver/gold nunca veem duplicata.
+RAW_PATH = os.getenv("RAW_PATH", "./data/raw")
 BRONZE_PATH = os.getenv("BRONZE_PATH", "./data/bronze")
 SILVER_PATH = os.getenv("SILVER_PATH", "./data/silver")
 GOLD_PATH = os.getenv("GOLD_PATH", "./data/gold")

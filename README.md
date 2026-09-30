@@ -17,7 +17,11 @@ Binance WS ──> producer.py ──> Kafka (crypto.trades, 6 part., RF=3)
                     ┌──────────────┴───────────────┐
               consumer_batch.py               dashboard/live.py
                     │                               │
-                bronze (parquet cru)          painel "ao vivo"
+                raw (parquet cru, pode duplicar)   painel "ao vivo"
+                    │
+                promote_bronze.py (dedup por symbol+trade_id)
+                    │
+                bronze (parquet cru, sem duplicata)
                     │
                 silver (candles 1m, DuckDB)
                     │
@@ -26,9 +30,22 @@ Binance WS ──> producer.py ──> Kafka (crypto.trades, 6 part., RF=3)
                 Streamlit (aba Análise)
 ```
 
-- **Bronze**: trade cru da Binance, parquet particionado por `symbol/dt`. Imutável.
+- **Raw**: landing zone local, mesmo layout do bronze (`symbol/dt`), mas pode ter trade
+  duplicado — `consumer_batch` só commita o offset no Kafka *depois* de gravar; se cair
+  no meio, o replay reescreve a mesma mensagem num arquivo novo.
+- **Bronze**: raw promovido e deduplicado. `promote_bronze.py` agrupa por `(symbol, trade_id)`
+  — a Binance já manda um `trade_id` único por símbolo em cada trade, então dedup é exato,
+  sem heurística — e escreve 1 parquet por partição com nome fixo, o que também torna a
+  promoção idempotente (rodar de novo sobrescreve com o mesmo resultado). Depois disso,
+  imutável, zero transformação de negócio.
 - **Silver**: candles OHLCV de 1min, tipado e agregado (DuckDB).
 - **Gold**: métricas de negócio por símbolo/dia — VWAP, volume, variação %, amplitude.
+
+Esse raw→bronze é o padrão **write-audit-publish**: escreve num lugar tolerante a falha,
+audita (aqui, dedup), só então publica no lugar confiável. Existe porque `consumer_batch`
+escolhe deliberadamente **at-least-once** (nunca perder trade, arriscando duplicar) em vez
+de at-most-once — exactly-once na ingestão em si seria caro/complexo pra esse projeto, então
+a garantia de unicidade foi isolada num único ponto em vez de exigida em toda escrita.
 
 ## Stack
 
@@ -50,8 +67,8 @@ Depois, em terminais separados:
 
 ```bash
 make producer      # 1. ingestão: Binance -> Kafka
-make batch         # 2. Kafka -> bronze (deixa rodando um tempo pra acumular dado)
-make pipeline      # 3. bronze -> silver -> gold
+make batch         # 2. Kafka -> raw (deixa rodando um tempo pra acumular dado)
+make pipeline      # 3. raw -> bronze (dedup) -> silver -> gold
 make dashboard     # 4. Streamlit (aba Análise + aba Ao vivo)
 ```
 
@@ -62,7 +79,10 @@ Parar tudo: `make down`. Se o Kafka bugar no boot: `make reset` (apaga o estado 
 
 ## Resultados (ingestão real, 16/09 a 23/09/2026)
 
-Sete dias de ingestão contínua da Binance, 5 pares (BTC, ETH, SOL, BNB, XRP):
+Sete dias de ingestão contínua da Binance, 5 pares (BTC, ETH, SOL, BNB, XRP). Essa rodada é
+anterior à camada raw + `promote_bronze.py` descrita acima (adicionada depois, como
+salvaguarda contra duplicata em caso de crash entre flush e commit do offset) — os números
+abaixo refletem o `consumer_batch` gravando direto no bronze, como era na época:
 
 | | |
 |---|---|
@@ -92,8 +112,11 @@ Executada em 23/09/2026, com custo ~zero (bronze de ~540 MB no S3 por poucas hor
    (gitignored), com `S3_BUCKET` e `AWS_REGION`.
 2. `make backfill-s3` (`scripts/backfill_s3.py`): sobe o bronze local pro S3 preservando o
    layout `symbol=/dt=`. Idempotente e confere contagem/bytes no fim (6.946 arquivos, 539,9 MB).
-3. `BRONZE_PATH=s3://<bucket>/bronze make batch`: `consumer_batch.py` detecta o prefixo
-   `s3://` e grava os parquet direto no S3 via `s3fs`, em vez do disco local.
+   Essa rodada foi feita antes da camada raw existir; hoje o bronze local que alimenta o
+   backfill viria de `make promote` em vez do `consumer_batch` direto.
+3. `BRONZE_PATH=s3://<bucket>/bronze make promote`: `promote_bronze.py` detecta o prefixo
+   `s3://` e grava o parquet deduplicado direto no S3 via `s3fs` (o raw continua sempre
+   local — não tem por que ele ir pro S3, é descartável).
 4. `BRONZE_PATH=s3://<bucket>/bronze make silver`: `silver.py` carrega `httpfs` + credencial
    via DuckDB Secrets Manager e lê o bronze direto do S3. O resultado é idêntico ao do bronze
    local (mesmas 55.115 linhas; OHLC e `trades` iguais, só ruído de ponto flutuante na soma
@@ -115,7 +138,7 @@ Silver e gold continuam locais (só o bronze prova a integração com a cloud). 
 não produção: depois de tirar as evidências acima, o bucket foi apagado e a access key
 do IAM user foi removida, então nada fica no ar nem gera custo. Pra repetir: crie um bucket
 e uma key nova e rode os passos acima. Pra voltar ao 100% local: comenta as chaves e mantém
-`BRONZE_PATH=./data/bronze`.
+`BRONZE_PATH=./data/bronze` (o `RAW_PATH` nunca muda, é sempre local).
 
 ## Desenvolvimento
 
@@ -133,3 +156,8 @@ CI no GitHub Actions roda ruff + pytest em cada PR.
 - 3 brokers KRaft (sem Zookeeper). RF=3 exige os 3 no ar.
 - Tópico com 6 partições, chaveado por símbolo (mesmo símbolo -> mesma partição, ordem preservada).
 - Consumers com `group.id` distintos -> offsets independentes; ler não apaga.
+- `consumer_batch` é at-least-once por design (commita o offset só depois de gravar, então
+  nunca perde trade) — o preço é que pode duplicar no raw se cair no meio. `promote_bronze.py`
+  aplica write-audit-publish: audita (dedup por `symbol`+`trade_id`) antes de publicar no
+  bronze, e faz isso com escrita idempotente (nome de arquivo fixo por partição, não
+  timestamp), então rodar de novo nunca duplica.

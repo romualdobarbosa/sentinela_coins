@@ -1,6 +1,6 @@
 export PYTHONPATH := src
 
-.PHONY: backfill-s3 up down logs producer batch silver gold pipeline dashboard reset run-bg stop-bg status-bg
+.PHONY: backfill-s3 up down logs producer batch promote silver gold pipeline dashboard reset run-bg stop-bg status-bg
 
 up:            ## sobe os 3 brokers + cria tópico + kafka-ui
 	podman compose up -d
@@ -18,8 +18,11 @@ logs:
 producer:      ## inicia a ingestão (Binance -> Kafka)
 	uv run python src/producer.py
 
-batch:         ## consumer batch (Kafka -> bronze)
+batch:         ## consumer batch (Kafka -> raw)
 	uv run python src/consumer_batch.py
+
+promote:       ## raw -> bronze (dedup por symbol+trade_id, idempotente)
+	uv run python src/promote_bronze.py
 
 silver:        ## bronze -> candles 1m
 	uv run python src/transform/silver.py
@@ -27,7 +30,7 @@ silver:        ## bronze -> candles 1m
 gold:          ## silver -> métricas diárias
 	uv run python src/transform/gold.py
 
-pipeline: silver gold   ## roda silver + gold em sequência
+pipeline: promote silver gold   ## roda promote + silver + gold em sequência
 
 dashboard:     ## streamlit (aba análise + aba ao vivo)
 	uv run streamlit run dashboard/app.py
@@ -49,6 +52,7 @@ stop-bg:       ## para o producer + batch que estão rodando em background
 backfill-s3:   ## sobe o bronze local pro S3 (idempotente, fase AWS)
 	uv run python scripts/backfill_s3.py
 
-status-bg:     ## mostra se producer/batch em background estão rodando + tamanho do bronze
+status-bg:     ## mostra se producer/batch em background estão rodando + tamanho do raw/bronze
 	@pgrep -af "src/producer.py|src/consumer_batch.py" || echo "nada rodando em background"
+	@find data/raw -name '*.parquet' 2>/dev/null | wc -l | xargs echo "arquivos no raw:"
 	@find data/bronze -name '*.parquet' 2>/dev/null | wc -l | xargs echo "arquivos no bronze:"

@@ -40,7 +40,11 @@ Binance WS ──> producer ──> Kafka (crypto.trades, 6 partições, RF=3)
                  ┌─────────────┴──────────────┐
            consumer_batch                 consumer_live (no dashboard)
                  │                              │
-             BRONZE (parquet cru)         painel "ao vivo" (não grava)
+             RAW (parquet cru, pode duplicar)   painel "ao vivo" (não grava)
+                 │
+             promote_bronze (dedup por symbol+trade_id)
+                 │
+             BRONZE (parquet cru, sem duplicata)
                  │
              SILVER (candles 1m, DuckDB)
                  │
@@ -86,9 +90,24 @@ Isso é uma **arquitetura Lambda** (speed layer + batch layer saindo do mesmo t�
 
 7. **Streamlit só lê o GOLD** na aba analítica (batch). A aba "ao vivo" usa o consumer live.
 
+8. **RAW como landing zone antes do bronze, com dedup na promoção.** `consumer_batch` grava
+   (flush) e só depois commita o offset — se cair entre os dois, o Kafka reentrega a mesma
+   mensagem e ela duplica no raw. Em vez de tentar exactly-once na ingestão (difícil e caro),
+   isolei a garantia num único ponto: `promote_bronze.py` lê o raw acumulado e deduplica por
+   `(symbol, trade_id)` — a Binance já manda um `trade_id` (`t`) único por símbolo no stream
+   `@trade`, não precisei de heurística por preço/tempo. Escreve 1 parquet fixo por partição
+   (`data.parquet`, sem timestamp no nome), o que também torna a promoção **idempotente**
+   (rodar de novo sobrescreve com o mesmo resultado) e de brinde consolida os milhares de
+   arquivos pequenos do raw num arquivo só por partição. Bronze/silver/gold, depois disso,
+   nunca precisam pensar em duplicata.
+
 ### Camadas medallion
 
-- **Bronze**: trade cru da Binance, parquet particionado `symbol=<>/dt=<>`. Imutável, zero transformação.
+- **Raw**: landing zone local, mesmo formato do bronze (parquet cru `symbol=<>/dt=<>`), mas
+  pode ter trade duplicado se o consumer cair entre o flush e o commit do offset. Nunca sobe
+  pro S3 — é só um buffer de ingestão.
+- **Bronze**: raw promovido e deduplicado por `(symbol, trade_id)`. Imutável, zero transformação
+  de negócio, fonte da verdade. 1 parquet por partição `symbol=<>/dt=<>`.
 - **Silver**: candles OHLCV 1min por símbolo (tipado, agregado). DuckDB.
 - **Gold**: métricas de negócio por símbolo/dia — VWAP, volume, variação %, amplitude. DuckDB.
 
@@ -105,16 +124,24 @@ Fase AWS: S3 (bronze) + boto3/s3fs; DuckDB lê `s3://` via httpfs.
 apagados; nada no ar). Demo público no Streamlit Cloud (`DASHBOARD_MODE=demo`, snapshot em
 `dashboard/demo_data/`). Detalhes e prints no README.
 
+**Pós-conclusão (30/09/2026):** adicionada a camada **raw** + `promote_bronze.py` (item 8 da
+seção 4) — `consumer_batch` agora grava em `RAW_PATH`, não mais direto em `BRONZE_PATH`. Os
+6.946 parquets do bronze histórico (a ingestão de 7 dias acima) **não foram tocados nem
+reprocessados** por essa mudança; o fluxo novo só afeta ingestão futura. README ainda não
+atualizado com esse ponto — avisar antes de considerar o README como espelho 100% fiel do
+código atual.
+
 ```
 ├── docker-compose.yml        # 3 brokers KRaft + init do tópico + kafka-ui (:8080); roda via Podman
-├── Makefile                  # up/down/producer/batch/silver/gold/pipeline/dashboard/backfill-s3/run-bg...
+├── Makefile                  # up/down/producer/batch/promote/silver/gold/pipeline/dashboard/backfill-s3/run-bg...
 ├── pyproject.toml + uv.lock  # uv (substitui requirements.txt); config de ruff e pytest
 ├── .env.example
 ├── .github/workflows/ci.yml  # ruff + pytest em push/PR
-├── src/                      # config, producer, consumer_batch (group bronze-writer), transform/{silver,gold}
+├── src/                      # config, producer, consumer_batch (group bronze-writer, grava RAW),
+│                             # promote_bronze (raw -> bronze, dedup), transform/{silver,gold}
 ├── scripts/backfill_s3.py    # sobe o bronze local pro S3 (idempotente)
 ├── dashboard/                # app, components (gráficos), data, theme, live, demo_data/
-├── tests/                    # lógica pura (sem Kafka): producer, batch, silver, gold, gráfico
+├── tests/                    # lógica pura (sem Kafka): producer, batch, promote_bronze, silver, gold, gráfico
 └── docs/img/                 # prints do kafka-ui e do S3 usados no README
 ```
 
@@ -122,7 +149,8 @@ Decisões/achados que valem lembrar:
 - Ambiente é **Podman** (não Docker) e **uv**; `make` já usa `podman compose` e `uv run`.
 - Silver faz forward-fill de minutos sem trade; o dashboard descarta esses candles e colapsa
   gaps longos no eixo (`_drop_ingestion_gaps` em `dashboard/components.py`).
-- Silver lendo do S3 leva ~9 min contra ~2 s local (milhares de parquets pequenos).
+- Silver lendo do S3 leva ~9 min contra ~2 s local (milhares de parquets pequenos). A promoção
+  raw->bronze já ajuda nisso (1 arquivo por partição), mas isso é sobre o bronze antigo/S3.
 - `.env` (gitignored) tem overrides pra ingestão longa: `BATCH_MAX_SECONDS=900`, `BATCH_MAX_MESSAGES=50000`.
 - Sessões paralelas usam o mesmo working dir (branches, não worktrees): antes de mexer,
   `git status --short`/`git branch -vv`, e commitar só o que foi tocado.
@@ -130,8 +158,8 @@ Decisões/achados que valem lembrar:
 ## 7. Como rodar de novo (histórico da ordem de construção)
 
 1. `make up` → 3 brokers + tópico (conferir no kafka-ui).
-2. `make producer` + `make batch` (ou `make run-bg`) → parquet caindo no bronze.
-3. `make pipeline` → silver + gold.
+2. `make producer` + `make batch` (ou `make run-bg`) → parquet caindo no raw.
+3. `make pipeline` → promote (raw -> bronze deduplicado) + silver + gold.
 4. `make dashboard` → aba Análise e aba Ao vivo.
 5. Fase AWS (opcional, já feita uma vez): bucket + IAM restrito, chaves no `.env`,
    `make backfill-s3`, `BRONZE_PATH=s3://...`, guardar evidência, **desligar tudo**.
