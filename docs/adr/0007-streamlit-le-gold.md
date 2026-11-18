@@ -1,14 +1,14 @@
-# 0007. Streamlit lê só o gold na aba de análise
+# 0007. Streamlit lê só as camadas agregadas
 
 **Status:** aceita (09/2026)
 
 ## Contexto
 
-O dashboard tem duas abas com fontes diferentes.
+O dashboard tem duas abas. A Visão Geral mostra o resumo do dia e um bloco ao vivo. A Análise mostra os candles e o histórico diário.
 
 ## Decisão
 
-A aba Análise lê só o gold (e os candles do silver pro gráfico), nunca o bronze. A aba Ao vivo usa o consumer live da ADR 0004.
+Tudo que é histórico vem das camadas agregadas (gold e, pros candles do gráfico, silver), nunca do bronze. O bloco ao vivo da Visão Geral usa o consumer live da ADR 0004.
 
 ## Consequências
 
