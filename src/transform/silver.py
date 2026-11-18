@@ -30,9 +30,11 @@ def build() -> None:
             -- recalcular de p/q/T crus: o parquet do bronze tem colunas "t" (trade id) e
             -- "T" (trade time) que só diferem em maiúscula, e o DuckDB resolve nomes de
             -- coluna sem diferenciar caixa -- SELECT T colidiria silenciosamente com "t".
+            -- "t" aqui é o trade id: o DuckDB renomeia a coluna "T" do parquet pra "T_1".
             WITH trades AS (
                 SELECT
                     s AS symbol,
+                    t AS trade_id,
                     price,
                     qty,
                     trade_time
@@ -42,10 +44,13 @@ def build() -> None:
                 SELECT
                     symbol,
                     time_bucket(INTERVAL '1 minute', trade_time) AS minute,
-                    arg_min(price, trade_time)  AS open,
+                    -- vários trades podem cair no mesmo milissegundo (varredura de book);
+                    -- o trade_id, sequencial por símbolo, desempata e deixa o candle
+                    -- determinístico, independente da ordem física das linhas no bronze
+                    arg_min(price, (trade_time, trade_id))  AS open,
                     max(price)                  AS high,
                     min(price)                  AS low,
-                    arg_max(price, trade_time)  AS close,
+                    arg_max(price, (trade_time, trade_id))  AS close,
                     sum(qty)                    AS volume,
                     sum(price * qty)            AS quote_volume,
                     count(*)                    AS trades

@@ -78,3 +78,28 @@ def test_no_forward_fill_needed_when_trades_are_contiguous(tmp_path, monkeypatch
     out = pl.read_parquet(silver_dir / "candles_1m.parquet")
     assert out.height == 2
     assert (out["trades"] > 0).all()
+
+
+def test_open_and_close_break_same_millisecond_ties_by_trade_id(tmp_path, monkeypatch):
+    # Varredura de book: vários trades no mesmo milissegundo com preços diferentes. Com
+    # arg_min(price, trade_time) o empate era resolvido pela ordem física das linhas, e o
+    # open mudava conforme o layout do bronze (aconteceu em BNBUSDT, 22/09 02:37).
+    bronze_dir = tmp_path / "bronze"
+    silver_dir = tmp_path / "silver"
+
+    t0 = int(datetime(2024, 1, 1, 10, 0, 0, tzinfo=UTC).timestamp() * 1000)
+    # ids 0..3, todos no mesmo ms: o open certo é o do id 0, o close o do id 3
+    _write_bronze_trades(
+        bronze_dir, "BNBUSDT", [(791.46, t0), (791.8, t0), (792.0, t0), (792.18, t0)], monkeypatch
+    )
+    # reescreve o bronze com as linhas em ordem inversa, pra ordem física não ajudar
+    (path,) = bronze_dir.rglob("*.parquet")
+    pl.read_parquet(path).reverse().write_parquet(path)
+
+    monkeypatch.setattr(silver, "BRONZE_PATH", str(bronze_dir))
+    monkeypatch.setattr(silver, "SILVER_PATH", str(silver_dir))
+
+    silver.build()
+
+    out = pl.read_parquet(silver_dir / "candles_1m.parquet")
+    assert out.select("open", "close").row(0) == (791.46, 792.18)
