@@ -1,0 +1,26 @@
+[dq] ok   silver preco_positivo                           0 violações
+[dq] ok   silver low_menor_que_high                       0 violações
+[dq] ok   silver open_dentro_do_range                     0 violações
+[dq] ok   silver close_dentro_do_range                    0 violações
+[dq] ok   silver volume_nao_negativo                      0 violações
+[dq] ok   silver chave_unica(symbol, minute)              0 violações
+[dq] ok   gold   vwap_positivo                            0 violações
+[dq] ok   gold   no_maximo_1440_candles_por_dia           0 violações
+[dq] ok   gold   chave_unica(symbol, dt)                  0 violações
+[dq] aviso gap BNBUSDT 2026-09-16 04:01:00 -> 2026-09-16 04:05:00 (5 min sem trade)
+[dq] aviso gap BNBUSDT 2026-09-16 04:07:00 -> 2026-09-16 04:29:00 (23 min sem trade)
+[dq] aviso gap BNBUSDT 2026-09-16 04:31:00 -> 2026-09-16 13:52:00 (562 min sem trade)
+[dq] aviso gap BTCUSDT 2026-09-16 04:01:00 -> 2026-09-16 04:05:00 (5 min sem trade)
+[dq] aviso gap BTCUSDT 2026-09-16 04:07:00 -> 2026-09-16 04:29:00 (23 min sem trade)
+[dq] aviso gap BTCUSDT 2026-09-16 04:31:00 -> 2026-09-16 13:52:00 (562 min sem trade)
+[dq] aviso gap ETHUSDT 2026-09-16 04:01:00 -> 2026-09-16 04:05:00 (5 min sem trade)
+[dq] aviso gap ETHUSDT 2026-09-16 04:07:00 -> 2026-09-16 04:29:00 (23 min sem trade)
+[dq] aviso gap ETHUSDT 2026-09-16 04:31:00 -> 2026-09-16 13:52:00 (562 min sem trade)
+[dq] aviso gap SOLUSDT 2026-09-16 04:01:00 -> 2026-09-16 04:05:00 (5 min sem trade)
+[dq] aviso gap SOLUSDT 2026-09-16 04:07:00 -> 2026-09-16 04:29:00 (23 min sem trade)
+[dq] aviso gap SOLUSDT 2026-09-16 04:31:00 -> 2026-09-16 13:52:00 (562 min sem trade)
+[dq] aviso gap XRPUSDT 2026-09-16 04:01:00 -> 2026-09-16 04:05:00 (5 min sem trade)
+[dq] aviso gap XRPUSDT 2026-09-16 04:07:00 -> 2026-09-16 04:29:00 (23 min sem trade)
+[dq] aviso gap XRPUSDT 2026-09-16 04:31:00 -> 2026-09-16 13:52:00 (562 min sem trade)
+[dq] 15 gaps de ingestão com >= 5 min
+[dq] todos os checks de erro passaram

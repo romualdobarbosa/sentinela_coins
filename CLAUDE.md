@@ -134,6 +134,12 @@ reprocessados** por essa mudança; o fluxo novo só afeta ingestão futura.
 achou **169 trades duplicados** por `(symbol, trade_id)` em 66.123.102, todos numa janela perto de
 16/09 04:06 (cara de reentrega após restart do consumer). Saída em `docs/audit/bronze-2026-09.txt`.
 
+**Data quality (18/11/2026):** `src/quality.py` / `make dq` (roda no fim do `make pipeline`). 9 regras
+de erro no silver/gold (exit 1 se falhar) + aviso de gap (>= 5 min seguidos com `trades = 0`).
+No dado real: 0 violações; 3 gaps em 16/09 nos 5 pares (04:01-04:05, 04:07-04:29, 04:31-13:52,
+o "buraco de ~10h" é na real 562 min). As 169 duplicatas são de 04:06, entre os dois primeiros
+gaps, o que confirma o restart. Saída em `docs/audit/dq-2026-09.txt`.
+
 **Polimento de portfólio (18/11/2026):** LICENSE MIT, README reescrito (TL;DR EN, `## Em números`
 com fonte de cada número, Mermaid, bugs, limitações, prints do dashboard), 8 ADRs em `docs/adr/`,
 `plan.md` movido pra `docs/`. README reflete o código atual.
@@ -145,7 +151,7 @@ com fonte de cada número, Mermaid, bugs, limitações, prints do dashboard), 8 
 ├── .env.example
 ├── .github/workflows/ci.yml  # ruff + pytest em push/PR
 ├── src/                      # config, producer, consumer_batch (group bronze-writer, grava RAW),
-│                             # promote_bronze (raw -> bronze, dedup), transform/{silver,gold}
+│                             # promote_bronze (raw -> bronze, dedup), transform/{silver,gold}, quality (DQ)
 ├── scripts/                  # backfill_s3 (bronze local -> S3, idempotente), audit_bronze (conta duplicatas)
 ├── dashboard/                # app, components (gráficos), data, theme, live, demo_data/
 ├── tests/                    # lógica pura (sem Kafka): producer, batch, promote_bronze, silver, gold, gráfico
@@ -167,7 +173,7 @@ Decisões/achados que valem lembrar:
 
 1. `make up` → 3 brokers + tópico (conferir no kafka-ui).
 2. `make producer` + `make batch` (ou `make run-bg`) → parquet caindo no raw.
-3. `make pipeline` → promote (raw -> bronze deduplicado) + silver + gold.
+3. `make pipeline` → promote (raw -> bronze deduplicado) + silver + gold + dq (checks de data quality).
 4. `make dashboard` → abas Visão Geral (com bloco Ao vivo) e Análise.
 5. Fase AWS (opcional, já feita uma vez): bucket + IAM restrito, chaves no `.env`,
    `make backfill-s3`, `BRONZE_PATH=s3://...`, guardar evidência, **desligar tudo**.

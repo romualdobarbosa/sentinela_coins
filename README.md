@@ -35,7 +35,9 @@ Rodada real de 16/09 a 23/09/2026, 5 pares (BTC, ETH, SOL, BNB, XRP).
 | Silver | 55.115 candles de 1 min (11.023 por par) | `dashboard/demo_data/silver/candles_1m.parquet` |
 | Gold | 40 linhas (5 pares x 8 dias) | `dashboard/demo_data/gold/daily_metrics.parquet` |
 | Silver lendo o bronze do S3 contra local | cerca de 9 min contra 2 s | medição manual em 23/09 (seção Fase AWS) |
-| Testes | 13 | `make test` |
+| Checks de data quality (silver e gold) | 9 regras de erro, 0 violações | `make dq`, saída em [`docs/audit/dq-2026-09.txt`](docs/audit/dq-2026-09.txt) |
+| Gaps de ingestão (5 min ou mais sem trade) | 3 janelas em 16/09, iguais nos 5 pares, a maior com 562 min | idem |
+| Testes | 22 | `make test` |
 
 ## Arquitetura
 
@@ -80,12 +82,12 @@ O `command: >` do container que cria o tópico tinha uma linha mais indentada qu
 
 ### As 169 duplicatas
 
-A rodada de 7 dias foi antes da camada raw, com o consumer gravando direto no bronze. Auditando depois (`make audit-bronze`), achei 169 trades repetidos em 66.123.102, todos numa mesma janela na madrugada de 16/09, espalhados por 5 arquivos, com cara de reentrega depois de um restart do consumer. É pouco, mas mostra que o at-least-once duplica na prática, e é o caso que o raw com dedup resolve.
+A rodada de 7 dias foi antes da camada raw, com o consumer gravando direto no bronze. Auditando depois (`make audit-bronze`), achei 169 trades repetidos em 66.123.102, todos com horário de 04:06 de 16/09, espalhados por 5 arquivos. Os checks de data quality mostram por quê. Os 5 pares ficaram sem trade de 04:01 a 04:05 e de novo de 04:07 a 04:29, ou seja, a ingestão caiu e voltou justo em volta desse minuto, e o Kafka reentregou o que o consumer ainda não tinha commitado. É pouco, mas mostra que o at-least-once duplica na prática, e é o caso que o raw com dedup resolve.
 
 ## Limitações
 
 - O bronze histórico de 7 dias não foi reprocessado pelo fluxo novo. As 169 duplicatas continuam lá, e quem lê esse bronze precisa saber disso.
-- A ingestão ficou parada cerca de 10 h entre o teste inicial e a rodada contínua. O silver preenche esses minutos com candles flat (forward-fill) e o dashboard os descarta do gráfico, mas nenhum check de qualidade avisa que o buraco existiu.
+- A ingestão ficou parada 562 min (9h22) em 16/09, entre o teste inicial e a rodada contínua. O silver preenche esses minutos com candles flat (forward-fill) e o dashboard os descarta do gráfico. O `make dq` lista esse e os outros gaps como aviso, mas não corrige nada, porque o dado daquele período não existe.
 - A medição de 9 min contra 2 s no S3 foi com o bronze antigo (milhares de arquivos pequenos). Com o bronze promovido, de 1 arquivo por partição, não medi de novo.
 - O CI não sobe Kafka. Os testes cobrem a lógica pura (producer, flush, promoção, silver, gold, gráfico).
 - É um projeto de portfólio, roda numa máquina só e não tem pretensão de produção.
@@ -115,7 +117,7 @@ Depois, em terminais separados:
 ```bash
 make producer      # 1. ingestão: Binance -> Kafka
 make batch         # 2. Kafka -> raw (deixa rodando uns minutos)
-make pipeline      # 3. raw -> bronze (dedup) -> silver -> gold
+make pipeline      # 3. raw -> bronze (dedup) -> silver -> gold -> checks de data quality
 make dashboard     # 4. Streamlit
 ```
 
@@ -155,6 +157,7 @@ Kafka-ui ao final da ingestão:
 ```bash
 make lint          # ruff check + ruff format --check
 make test          # pytest (lógica pura, não precisa do Kafka)
+make dq            # checks de data quality no silver e no gold
 make all           # os dois
 pre-commit install # ruff a cada commit
 ```
