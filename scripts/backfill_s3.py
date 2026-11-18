@@ -5,6 +5,7 @@ ainda não está no bucket (mesmo caminho e mesmo tamanho), então dá pra rodar
 se cair no meio. No final confere contagem e bytes local vs S3.
 
 Uso: make backfill-s3   (precisa de AWS_* e S3_BUCKET no .env)
+     BRONZE_PATH=data/bronze_legacy S3_PREFIX=bronze_legacy make backfill-s3
 """
 
 import os
@@ -17,6 +18,8 @@ from config import AWS_ACCESS_KEY_ID, AWS_REGION, AWS_SECRET_ACCESS_KEY, BRONZE_
 
 LOCAL_ROOT = Path(BRONZE_PATH)
 BUCKET = os.getenv("S3_BUCKET", "")
+# prefixo no bucket; trocar permite subir dois layouts lado a lado (ex: bronze_legacy)
+PREFIX = os.getenv("S3_PREFIX", "bronze").strip("/")
 
 
 def main() -> None:
@@ -32,7 +35,7 @@ def main() -> None:
         secret=AWS_SECRET_ACCESS_KEY,
         client_kwargs={"region_name": AWS_REGION},
     )
-    remote_root = f"{BUCKET}/bronze"
+    remote_root = f"{BUCKET}/{PREFIX}"
 
     local = {
         p.relative_to(LOCAL_ROOT).as_posix(): p.stat().st_size
