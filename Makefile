@@ -1,6 +1,6 @@
 export PYTHONPATH := src
 
-.PHONY: backfill-s3 up down logs producer batch promote silver gold pipeline dashboard reset run-bg stop-bg status-bg
+.PHONY: audit-bronze lint test all backfill-s3 up down logs producer batch promote silver gold pipeline dashboard reset run-bg stop-bg status-bg
 
 up:            ## sobe os 3 brokers + cria tópico + kafka-ui
 	podman compose up -d
@@ -32,7 +32,7 @@ gold:          ## silver -> métricas diárias
 
 pipeline: promote silver gold   ## roda promote + silver + gold em sequência
 
-dashboard:     ## streamlit (aba análise + aba ao vivo)
+dashboard:     ## streamlit (abas Visão Geral, com o bloco ao vivo, e Análise)
 	uv run streamlit run dashboard/app.py
 
 run-bg:        ## sobe producer + batch em background (nohup), sobrevive fechar o terminal
@@ -48,6 +48,18 @@ stop-bg:       ## para o producer + batch que estão rodando em background
 	-pkill -f "src/consumer_batch.py"
 	-rm -f .producer.pid .batch.pid
 	@echo "producer/batch parados (offsets já commitados ficam salvos, sem perda de dado)"
+
+audit-bronze:  ## conta trades duplicados por (symbol, trade_id) no bronze
+	uv run python scripts/audit_bronze.py
+
+lint:          ## ruff check + format check
+	uv run ruff check .
+	uv run ruff format --check .
+
+test:          ## pytest (lógica pura, sem Kafka)
+	uv run pytest
+
+all: lint test ## lint + testes
 
 backfill-s3:   ## sobe o bronze local pro S3 (idempotente, fase AWS)
 	uv run python scripts/backfill_s3.py
