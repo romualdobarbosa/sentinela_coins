@@ -1,4 +1,4 @@
-# CLAUDE.md — Contexto do projeto: Crypto Streaming Lakehouse
+# CLAUDE.md — Contexto do projeto: Sentinela Coins: Crypto Streaming Lakehouse
 
 > Este arquivo é o briefing pro agente. Lê tudo antes de propor plano.
 > É um projeto de **portfólio**, não produção. Objetivo duplo: (1) mostrar
@@ -23,11 +23,11 @@ pra evidência.
 ## 3. Objetivo e restrições (LEIA — moldam todas as decisões)
 
 - **É vitrine, não produção.** Não precisa de uptime, HA real, nem rodar pra sempre.
-- **Custo alvo: ~R$ 0.** Todo o desenvolvimento é local (Docker no Fedora, de graça).
+- **Custo alvo: ~R$ 0.** Todo o desenvolvimento é local (containers via Podman no Fedora, de graça).
 - **AWS só no final e por pouco tempo:** subir a camada **bronze pro S3** por um período,
   tirar print/deixar como evidência, e desligar. Nada fica no ar.
 - **Nada de MSK.** Kafka gerenciado da AWS não tem free tier e custa R$ 3.000+/mês. Kafka
-  roda em Docker local. Rodar Kafka na mão inclusive mostra mais skill que clicar em "criar MSK".
+  roda em containers locais (Podman). Rodar Kafka na mão inclusive mostra mais skill que clicar em "criar MSK".
 - Free tier atual da AWS (contas pós-15/07/2025) é **crédito de até US$ 200 / 6 meses**, não
   mais "12 meses grátis". Por isso: desenvolve local, só integra AWS quando estiver redondo,
   pra não queimar o relógio de 6 meses à toa.
@@ -50,7 +50,7 @@ Binance WS ──> producer ──> Kafka (crypto.trades, 6 partições, RF=3)
                  │
              GOLD (métricas diárias, DuckDB)
                  │
-             Streamlit (aba Análise)
+             Streamlit (abas Visão Geral e Análise)
 ```
 
 Isso é uma **arquitetura Lambda** (speed layer + batch layer saindo do mesmo tópico).
@@ -88,7 +88,8 @@ Isso é uma **arquitetura Lambda** (speed layer + batch layer saindo do mesmo t�
 6. **DuckDB pra silver/gold, não Athena.** Mais barato (R$ 0), já domino, lê parquet (e S3 via
    httpfs) direto. Athena fica como "sei usar também" se quiser mencionar.
 
-7. **Streamlit só lê o GOLD** na aba analítica (batch). A aba "ao vivo" usa o consumer live.
+7. **Streamlit só lê as camadas agregadas** (gold, e silver pros candles do gráfico). Abas reais:
+   "Visão Geral" (resumo do dia + bloco "Ao vivo", que usa o consumer live) e "Análise".
 
 8. **RAW como landing zone antes do bronze, com dedup na promoção.** `consumer_batch` grava
    (flush) e só depois commita o offset — se cair entre os dois, o Kafka reentrega a mesma
@@ -113,7 +114,7 @@ Isso é uma **arquitetura Lambda** (speed layer + batch layer saindo do mesmo t�
 
 ## 5. Stack
 
-Python 3.11+ · confluent-kafka · websockets · Polars · DuckDB · Streamlit · Docker Compose.
+Python 3.11+ · confluent-kafka · websockets · Polars · DuckDB · Streamlit · Podman (compose).
 Fase AWS: S3 (bronze) + boto3/s3fs; DuckDB lê `s3://` via httpfs.
 
 ## 6. Estado atual do código
@@ -127,22 +128,29 @@ apagados; nada no ar). Demo público no Streamlit Cloud (`DASHBOARD_MODE=demo`, 
 **Pós-conclusão (30/09/2026):** adicionada a camada **raw** + `promote_bronze.py` (item 8 da
 seção 4) — `consumer_batch` agora grava em `RAW_PATH`, não mais direto em `BRONZE_PATH`. Os
 6.946 parquets do bronze histórico (a ingestão de 7 dias acima) **não foram tocados nem
-reprocessados** por essa mudança; o fluxo novo só afeta ingestão futura. README ainda não
-atualizado com esse ponto — avisar antes de considerar o README como espelho 100% fiel do
-código atual.
+reprocessados** por essa mudança; o fluxo novo só afeta ingestão futura.
+
+**Auditoria do bronze histórico (18/11/2026):** `make audit-bronze` (`scripts/audit_bronze.py`)
+achou **169 trades duplicados** por `(symbol, trade_id)` em 66.123.102, todos numa janela perto de
+16/09 04:06 (cara de reentrega após restart do consumer). Saída em `docs/audit/bronze-2026-09.txt`.
+
+**Polimento de portfólio (18/11/2026):** LICENSE MIT, README reescrito (TL;DR EN, `## Em números`
+com fonte de cada número, Mermaid, bugs, limitações, prints do dashboard), 8 ADRs em `docs/adr/`,
+`plan.md` movido pra `docs/`. README reflete o código atual.
 
 ```
 ├── docker-compose.yml        # 3 brokers KRaft + init do tópico + kafka-ui (:8080); roda via Podman
-├── Makefile                  # up/down/producer/batch/promote/silver/gold/pipeline/dashboard/backfill-s3/run-bg...
+├── Makefile                  # up/down/producer/batch/promote/silver/gold/pipeline/dashboard/lint/test/all/audit-bronze/backfill-s3/run-bg...
 ├── pyproject.toml + uv.lock  # uv (substitui requirements.txt); config de ruff e pytest
 ├── .env.example
 ├── .github/workflows/ci.yml  # ruff + pytest em push/PR
 ├── src/                      # config, producer, consumer_batch (group bronze-writer, grava RAW),
 │                             # promote_bronze (raw -> bronze, dedup), transform/{silver,gold}
-├── scripts/backfill_s3.py    # sobe o bronze local pro S3 (idempotente)
+├── scripts/                  # backfill_s3 (bronze local -> S3, idempotente), audit_bronze (conta duplicatas)
 ├── dashboard/                # app, components (gráficos), data, theme, live, demo_data/
 ├── tests/                    # lógica pura (sem Kafka): producer, batch, promote_bronze, silver, gold, gráfico
-└── docs/img/                 # prints do kafka-ui e do S3 usados no README
+├── docs/                     # adr/ (8 decisões), audit/, plan.md (plano original), img/ (prints)
+└── LICENSE                   # MIT
 ```
 
 Decisões/achados que valem lembrar:
@@ -160,7 +168,7 @@ Decisões/achados que valem lembrar:
 1. `make up` → 3 brokers + tópico (conferir no kafka-ui).
 2. `make producer` + `make batch` (ou `make run-bg`) → parquet caindo no raw.
 3. `make pipeline` → promote (raw -> bronze deduplicado) + silver + gold.
-4. `make dashboard` → aba Análise e aba Ao vivo.
+4. `make dashboard` → abas Visão Geral (com bloco Ao vivo) e Análise.
 5. Fase AWS (opcional, já feita uma vez): bucket + IAM restrito, chaves no `.env`,
    `make backfill-s3`, `BRONZE_PATH=s3://...`, guardar evidência, **desligar tudo**.
 
