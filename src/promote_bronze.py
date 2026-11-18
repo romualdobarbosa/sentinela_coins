@@ -5,8 +5,9 @@
   bronze não tem duplicata -- silver/gold, depois disso, não precisam pensar nisso.
 - Chave de dedup: (s, t) -- "s" é o símbolo, "t" é o trade_id que a própria Binance manda
   no stream @trade, único por símbolo. Não precisa de heurística por preço/qty/tempo.
-- Nome de arquivo fixo por partição (não tem timestamp) -- rodar de novo sobrescreve com
-  o mesmo resultado deduplicado, então a promoção é idempotente mesmo sem limpar o raw.
+- Nome de arquivo fixo por partição (não tem timestamp) e linhas ordenadas por trade_id --
+  rodar de novo sobrescreve com o mesmo arquivo, então a promoção é idempotente mesmo sem
+  limpar o raw.
 - Lê tudo o raw acumulado a cada execução (sem incremental): simples e correto, custa só
   reprocessar volume que já processou antes -- tradeoff aceitável pro tamanho do projeto.
 """
@@ -41,6 +42,10 @@ def promote() -> None:
         )
 
     for (symbol, dt), part in df.group_by(["s", "dt"]):
+        # unique() não preserva ordem: sem o sort, as linhas saem embaralhadas, o parquet
+        # comprime ~3x pior (t, E e trade_time deixam de ser quase sequenciais) e duas
+        # promoções do mesmo raw gravam arquivos com ordem diferente.
+        part = part.sort("t")
         rel = f"symbol={symbol}/dt={dt}/data.parquet"
         if is_s3:
             with fs.open(f"{BRONZE_PATH.rstrip('/')}/{rel}", "wb") as f:
