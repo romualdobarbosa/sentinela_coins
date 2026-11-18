@@ -35,9 +35,10 @@ inject_css()
 st.title(TITLE)
 if IS_DEMO:
     st.caption(
-        "Modo demonstração: replay em loop de trades reais coletados em 17/09/2026 "
-        "e snapshot fixo de gold/silver -- sem Kafka/pipeline no ar. Clona o repo e "
-        "roda `make dashboard` pra ver a versão ao vivo de verdade."
+        "Esta é a versão de demonstração. O bloco Ao vivo repete em loop trades reais "
+        "coletados em 17/09/2026, e os gráficos usam uma cópia fixa das camadas gold e "
+        "silver, sem Kafka nem pipeline rodando. Para ver ao vivo de verdade, clone o "
+        "repositório e rode `make dashboard`."
     )
 
 tab_overview, tab_analysis = st.tabs(["Visão Geral", "Análise"])
@@ -100,7 +101,7 @@ with tab_overview:
                 )
         st.caption(f"{len(st.session_state.live_buffer)} trades na janela")
     else:
-        st.info("Sem trades ainda — producer + Kafka estão de pé?")
+        st.info("Nenhum trade chegou ainda. O producer e o Kafka estão rodando?")
 
 # ---------- Batch / analítico ----------
 with tab_analysis:
