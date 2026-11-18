@@ -1,0 +1,18 @@
+Medição de leitura do bronze no S3 (18/11/2026), bucket em us-east-2, máquina local no Brasil.
+Mesmo silver.py, BRONZE_PATH=s3://<bucket>/<prefixo>. Ambos geraram 55.115 candles idênticos
+à versão local correspondente.
+
+Upload (make backfill-s3)
+  bronze_legacy  6.946 arquivos  539,9 MB  4 min 55 s
+  bronze           40 arquivos   507,1 MB  1 min 28 s
+
+Silver lendo do S3
+  bronze_legacy  709,45 s (1 execução)
+  bronze          55,79 s / 58,99 s (2 execuções)
+
+Silver local, mesma máquina (3 execuções)
+  bronze_legacy  1,37 / 1,07 / 1,07 s
+  bronze         0,87 / 0,85 / 0,82 s
+
+Teardown: os 6.986 objetos foram apagados pelo script logo após a medição; bucket e access key
+apagados no console em seguida.

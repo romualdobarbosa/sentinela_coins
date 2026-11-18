@@ -127,11 +127,15 @@ apagados; nada no ar). Demo público no Streamlit Cloud (`DASHBOARD_MODE=demo`, 
 
 **Pós-conclusão (30/09/2026):** adicionada a camada **raw** + `promote_bronze.py` (item 8 da
 seção 4) — `consumer_batch` agora grava em `RAW_PATH`, não mais direto em `BRONZE_PATH`. Os
-6.946 parquets do bronze histórico (a ingestão de 7 dias acima) **não foram tocados nem
-reprocessados** por essa mudança; o fluxo novo só afeta ingestão futura.
+6.946 parquets do bronze histórico ficaram intocados até 18/11/2026, quando foram consolidados
+pelo próprio `promote_bronze` (rodado por símbolo, pra caber na RAM): `data/bronze` agora tem 40
+arquivos, 507,1 MB, 66.122.933 trades e 0 duplicatas; o original foi movido pra `data/bronze_legacy`
+(evidência da auditoria). A consolidação expôs dois bugs, corrigidos com teste: o promote gravava
+linhas fora de ordem (arquivo 3x maior) e o silver desempatava open/close pela ordem física
+(5,1% dos candles errados). Silver, gold e o snapshot do demo foram refeitos.
 
-**Auditoria do bronze histórico (18/11/2026):** `make audit-bronze` (`scripts/audit_bronze.py`)
-achou **169 trades duplicados** por `(symbol, trade_id)` em 66.123.102, todos numa janela perto de
+**Auditoria do bronze histórico (18/11/2026):** `BRONZE_PATH=data/bronze_legacy make audit-bronze`
+(`scripts/audit_bronze.py`) achou **169 trades duplicados** por `(symbol, trade_id)` em 66.123.102, todos numa janela perto de
 16/09 04:06 (cara de reentrega após restart do consumer). Saída em `docs/audit/bronze-2026-09.txt`.
 
 **Data quality (18/11/2026):** `src/quality.py` / `make dq` (roda no fim do `make pipeline`). 9 regras
@@ -163,8 +167,8 @@ Decisões/achados que valem lembrar:
 - Ambiente é **Podman** (não Docker) e **uv**; `make` já usa `podman compose` e `uv run`.
 - Silver faz forward-fill de minutos sem trade; o dashboard descarta esses candles e colapsa
   gaps longos no eixo (`_drop_ingestion_gaps` em `dashboard/components.py`).
-- Silver lendo do S3 leva ~9 min contra ~2 s local (milhares de parquets pequenos). A promoção
-  raw->bronze já ajuda nisso (1 arquivo por partição), mas isso é sobre o bronze antigo/S3.
+- Silver lendo do S3: bronze original (6.946 arquivos) 709 s, consolidado (40 arquivos) 56 s, medido em 18/11/2026
+  (`docs/audit/s3-2026-11.txt`). Bucket e key apagados depois.
 - `.env` (gitignored) tem overrides pra ingestão longa: `BATCH_MAX_SECONDS=900`, `BATCH_MAX_MESSAGES=50000`.
 - Sessões paralelas usam o mesmo working dir (branches, não worktrees): antes de mexer,
   `git status --short`/`git branch -vv`, e commitar só o que foi tocado.

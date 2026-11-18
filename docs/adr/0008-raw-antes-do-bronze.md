@@ -17,4 +17,4 @@ O `consumer_batch` grava num raw local, que pode ter duplicata. O `promote_bronz
 - A garantia de unicidade fica num ponto só. Bronze, silver e gold não precisam pensar em duplicata.
 - A promoção é idempotente, porque rodar de novo sobrescreve o mesmo arquivo com o mesmo resultado.
 - De quebra, os milhares de arquivos pequenos do raw viram 1 arquivo por partição.
-- O bronze histórico de 7 dias continua no formato antigo, não foi reprocessado.
+- Em 18/11/2026 o bronze histórico foi consolidado pelo próprio `promote_bronze` (6.946 arquivos viraram 40, sem as 169 duplicatas). Lendo do S3, o silver caiu de 709 s pra 56 s.
