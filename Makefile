@@ -1,6 +1,6 @@
 export PYTHONPATH := src
 
-.PHONY: audit-bronze lint test all backfill-s3 up down logs producer batch promote silver gold pipeline dashboard reset run-bg stop-bg status-bg
+.PHONY: dq audit-bronze lint test all backfill-s3 up down logs producer batch promote silver gold pipeline dashboard reset run-bg stop-bg status-bg
 
 up:            ## sobe os 3 brokers + cria tópico + kafka-ui
 	podman compose up -d
@@ -30,7 +30,10 @@ silver:        ## bronze -> candles 1m
 gold:          ## silver -> métricas diárias
 	uv run python src/transform/gold.py
 
-pipeline: promote silver gold   ## roda promote + silver + gold em sequência
+dq:            ## checks de data quality no silver e no gold (erro = exit 1, gap = aviso)
+	uv run python src/quality.py
+
+pipeline: promote silver gold dq   ## roda promote + silver + gold + dq em sequência
 
 dashboard:     ## streamlit (abas Visão Geral, com o bloco ao vivo, e Análise)
 	uv run streamlit run dashboard/app.py
