@@ -42,21 +42,7 @@ Rodada real de 16/09 a 23/09/2026, 5 pares (BTC, ETH, SOL, BNB, XRP).
 
 ## Arquitetura
 
-```mermaid
-flowchart TD
-    WS[Binance WebSocket<br/>stream @trade] --> P[producer.py]
-    P -->|chave = símbolo<br/>acks=all| K[(Kafka crypto.trades<br/>3 brokers KRaft<br/>6 partições, RF=3, min ISR=2)]
-    K -->|group bronze-writer<br/>at-least-once| CB[consumer_batch.py]
-    K -->|group efêmero<br/>offset latest| LV[dashboard/live.py]
-    CB --> RAW[raw<br/>parquet cru, pode duplicar]
-    RAW -->|promote_bronze.py<br/>dedup por symbol + trade_id| BR[bronze<br/>1 parquet por symbol/dt]
-    BR -->|DuckDB| SV[silver<br/>candles OHLCV 1 min]
-    SV -->|DuckDB| GD[gold<br/>métricas diárias]
-    GD --> DASH[Streamlit]
-    SV --> DASH
-    LV -->|não grava nada| DASH
-    BR -.->|fase AWS, já encerrada| S3[(AWS S3)]
-```
+![Diagrama da arquitetura do Sentinela Coins. Os trades da Binance entram no Kafka e seguem por dois caminhos, um ao vivo direto para o dashboard e outro em lote pelas camadas raw, bronze, silver e gold.](docs/img/arquitetura.png)
 
 É uma arquitetura Lambda. Do mesmo tópico saem dois caminhos, cada um no seu consumer group (no Kafka, ler não apaga a mensagem).
 
